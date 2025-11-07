@@ -10,7 +10,7 @@ import serial
 import serial.tools.list_ports
 import time
 import threading
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Tuple
 from queue import Queue, Empty
 
 from hardware.bbd203_protocol import (
@@ -125,9 +125,99 @@ class BBD203Driver:
         ports = serial.tools.list_ports.comports()
         return [port.device for port in ports]
 
+    @staticmethod
+    def list_thorlabs_devices() -> List[Dict[str, str]]:
+        """
+        List all ThorLabs APT devices connected via USB
+
+        Returns:
+            list: List of dictionaries containing device information
+                  Each dict has: 'serial', 'port', 'description', 'vid', 'pid'
+        """
+        thorlabs_devices = []
+        ports = serial.tools.list_ports.comports()
+
+        # ThorLabs devices typically use FTDI chips
+        # Common VID/PID combinations:
+        # - FTDI: VID=0x0403, various PIDs
+        thorlabs_vids = [0x0403]  # FTDI vendor ID
+
+        for port in ports:
+            # Check if this is a ThorLabs device by VID
+            if port.vid in thorlabs_vids:
+                device_info = {
+                    'serial': port.serial_number or 'Unknown',
+                    'port': port.device,
+                    'description': port.description or 'Unknown',
+                    'manufacturer': port.manufacturer or 'Unknown',
+                    'vid': f"0x{port.vid:04X}" if port.vid else 'Unknown',
+                    'pid': f"0x{port.pid:04X}" if port.pid else 'Unknown'
+                }
+                thorlabs_devices.append(device_info)
+                print(f"DEBUG: Found ThorLabs device - Serial: {device_info['serial']}, "
+                      f"Port: {device_info['port']}")
+
+        return thorlabs_devices
+
+    @staticmethod
+    def find_device_by_serial(serial_number: str) -> Optional[str]:
+        """
+        Find ThorLabs device by serial number and return its port
+
+        Args:
+            serial_number: Device serial number (e.g., '83123456')
+
+        Returns:
+            str: COM port name if found, None otherwise
+        """
+        devices = BBD203Driver.list_thorlabs_devices()
+
+        for device in devices:
+            if device['serial'] == serial_number:
+                print(f"INFO: Found device {serial_number} on port {device['port']}")
+                return device['port']
+
+        print(f"WARNING: Device with serial number {serial_number} not found")
+        print(f"Available devices: {[d['serial'] for d in devices]}")
+        return None
+
+    def connect_by_serial(self, serial_number: str, baudrate: int = 115200) -> bool:
+        """
+        Connect to BBD203 controller by serial number (auto-find port)
+
+        This is the preferred connection method - automatically finds the
+        device by serial number over USB, similar to Kinesis library.
+
+        Args:
+            serial_number: Device serial number (e.g., '83123456')
+            baudrate: Baud rate (default: 115200)
+
+        Returns:
+            bool: True if connection successful
+
+        Example:
+            driver.connect_by_serial('83123456')
+        """
+        # Find device port by serial number
+        port = self.find_device_by_serial(serial_number)
+
+        if port is None:
+            print(f"ERROR: Could not find BBD203 with serial number {serial_number}")
+            print("Available ThorLabs devices:")
+            for device in self.list_thorlabs_devices():
+                print(f"  Serial: {device['serial']}, Port: {device['port']}, "
+                      f"Description: {device['description']}")
+            return False
+
+        # Connect using the found port
+        return self.connect(port, baudrate)
+
     def connect(self, port: str, baudrate: int = 115200) -> bool:
         """
-        Connect to BBD203 controller
+        Connect to BBD203 controller by port name
+
+        Note: It's recommended to use connect_by_serial() instead, which
+        automatically finds the device by serial number.
 
         Args:
             port: Serial port name (e.g., 'COM3' or '/dev/ttyUSB0')

@@ -55,23 +55,27 @@ class ThorLabsStage:
 
         print("INFO: ThorLabs Stage controller initialized (BBD203 driver)")
 
-    def connect(self, port: str, baudrate: int = 115200) -> bool:
+    def connect(self, serial_number: str, baudrate: int = 115200) -> bool:
         """
-        Connect to ThorLabs stage via BBD203 controller
+        Connect to ThorLabs stage via BBD203 controller using serial number
+
+        The serial number is printed on the BBD203 controller (e.g., '83123456').
+        The driver will automatically find the USB device and connect.
 
         Args:
-            port: Serial port name (e.g., 'COM3', '/dev/ttyUSB0')
+            serial_number: BBD203 device serial number
             baudrate: Baud rate (default: 115200)
 
         Returns:
             bool: True if connection successful
         """
-        print(f"DEBUG: Connecting to BBD203/MLS Stage on {port}")
+        print(f"DEBUG: Connecting to BBD203/MLS Stage with serial number {serial_number}")
 
-        if not self._driver.connect(port, baudrate):
+        # Connect by serial number - driver will auto-find the port
+        if not self._driver.connect_by_serial(serial_number, baudrate):
             return False
 
-        self._port = port
+        self._port = serial_number  # Store serial for reference
 
         # Enable all channels
         time.sleep(0.2)
@@ -382,12 +386,22 @@ class ThorLabsStage:
     @staticmethod
     def list_available_ports():
         """
-        List available serial ports
+        List available serial ports (deprecated - use list_devices instead)
 
         Returns:
             list: Available port names
         """
         return BBD203Driver.list_available_ports()
+
+    @staticmethod
+    def list_devices():
+        """
+        List all connected ThorLabs BBD203 devices
+
+        Returns:
+            list: List of dicts with device info including 'serial' and 'port'
+        """
+        return BBD203Driver.list_thorlabs_devices()
 
     def get_detailed_status(self) -> Dict:
         """

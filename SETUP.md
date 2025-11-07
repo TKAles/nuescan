@@ -52,13 +52,18 @@ nuescan/
 
 ### Current Implementation Status
 
-All hardware modules are currently **STUB IMPLEMENTATIONS** for development and testing. They simulate hardware responses without requiring actual devices.
+Hardware module implementation status:
+- **ThorLabs BBD203 Stage**: ✅ **FULLY IMPLEMENTED** - Production ready
+- **T3R-SL Device**: Stub implementation for development
+- **Microscope Systems**: Stub implementation for development
 
-#### ThorLabs MLS Stage
+#### ThorLabs MLS Stage (BBD203 Motor Controller)
 - **File**: `hardware/thorlabs_stage.py`
-- **Purpose**: 3-axis positioning control
-- **Connection**: USB/Serial
-- **Status**: Stub - simulates connection, homing, and positioning
+- **Purpose**: 3-axis positioning control via BBD203 controller
+- **Connection**: USB with serial number auto-detection
+- **Status**: Full implementation - ready for real hardware
+- **Protocol**: APT binary protocol v42.1
+- **Usage**: Enter BBD203 serial number in UI, driver auto-finds USB port
 
 #### T3R-SL Device
 - **File**: `hardware/t3r_device.py`

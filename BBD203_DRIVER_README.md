@@ -82,7 +82,13 @@ Application-specific wrapper that:
 
 ## Usage
 
-### Basic Connection and Movement
+### Connection Methods
+
+The driver supports two connection methods:
+
+#### Method 1: Connect by Serial Number (Recommended)
+
+Similar to ThorLabs Kinesis library - automatically finds the USB device:
 
 ```python
 from hardware.bbd203_driver import BBD203Driver
@@ -90,8 +96,27 @@ from hardware.bbd203_driver import BBD203Driver
 # Create driver instance
 driver = BBD203Driver(encoder_counts_per_mm=20000)
 
-# Connect to controller
+# List available ThorLabs devices
+devices = driver.list_thorlabs_devices()
+for device in devices:
+    print(f"Serial: {device['serial']}, Port: {device['port']}")
+
+# Connect by serial number (auto-finds the port)
+driver.connect_by_serial('83123456')  # Serial printed on controller
+```
+
+#### Method 2: Connect by Port Name
+
+Direct connection to a specific port:
+
+```python
+# Connect to specific port
 driver.connect('/dev/ttyUSB0')  # or 'COM3' on Windows
+```
+
+### Basic Movement
+
+```python
 
 # Enable all channels
 driver.enable_channel(1, True)  # X-axis
@@ -138,8 +163,13 @@ from hardware.thorlabs_stage import ThorLabsStage
 # Create stage controller
 stage = ThorLabsStage(encoder_counts_per_mm=20000)
 
-# Connect (automatically enables all channels)
-stage.connect('/dev/ttyUSB0')
+# List available devices
+devices = stage.list_devices()
+for device in devices:
+    print(f"BBD203 Serial: {device['serial']}")
+
+# Connect by serial number (automatically enables all channels)
+stage.connect('83123456')  # Serial number from controller label
 
 # Home all axes
 stage.home_all_axes(wait=True)
@@ -218,12 +248,33 @@ driver.set_velocity_params(
 
 ## Integration with nueScan
 
-The driver is integrated into nueScan through the `ThorLabsStage` wrapper class. In the UI:
+The driver is integrated into nueScan through the `ThorLabsStage` wrapper class. The connection is simplified using serial number auto-detection:
 
-1. Enter the COM port (e.g., `COM3` or `/dev/ttyUSB0`) in the "ThorLABS MLS Stage Serial" field
-2. Click "Connect" to establish connection
-3. Channels are automatically enabled and configured
-4. Use the UI controls for movement and scanning
+### Connecting in the UI
+
+1. **Find Serial Number**: Look at the label on your BBD203 controller (e.g., `83123456`)
+2. **Enter Serial**: Type the serial number in the "ThorLABS MLS Stage Serial" field
+3. **Connect**: Click "Connect" button
+   - Driver automatically finds the USB device
+   - All 3 channels are enabled
+   - Status updates begin
+4. **Ready**: The controller is now ready to home and move axes
+
+### Connection Process
+
+When you click "Connect":
+- The driver scans all USB ports for ThorLabs devices (FTDI VID: 0x0403)
+- Finds the device matching your serial number
+- Automatically uses the correct COM port
+- Enables all channels (X/Y/Z axes)
+- Sets default velocity parameters
+
+### Troubleshooting Connection
+
+If connection fails, a dialog will show:
+- The serial number you entered
+- List of all detected ThorLabs devices with their serial numbers
+- Helps you identify the correct serial to use
 
 ## Protocol Details
 

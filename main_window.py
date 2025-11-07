@@ -87,6 +87,9 @@ class NueScanMainWindow(QMainWindow):
 
     def _initialize_ui(self):
         """Initialize UI with default values"""
+        # Set placeholder text for stage serial
+        self.le_stage_serial.setPlaceholderText("Enter BBD203 serial (e.g., 83123456)")
+
         # Populate combo boxes with dummy data
         self._populate_combo_boxes()
 
@@ -116,12 +119,42 @@ class NueScanMainWindow(QMainWindow):
             self.thorlabs_stage.disconnect()
             self.btn_toggle_mls.setText("Connect")
         else:
-            serial = self.le_stage_serial.text()
-            success = self.thorlabs_stage.connect(serial)
+            serial_number = self.le_stage_serial.text().strip()
+            if not serial_number:
+                QMessageBox.warning(
+                    self, "No Serial Number",
+                    "Please enter the BBD203 serial number.\n\n"
+                    "The serial number is printed on the controller label\n"
+                    "(e.g., '83123456')."
+                )
+                return
+
+            print(f"INFO: Attempting to connect to BBD203 serial: {serial_number}")
+            success = self.thorlabs_stage.connect(serial_number)
             if success:
                 self.btn_toggle_mls.setText("Disconnect")
+                QMessageBox.information(
+                    self, "Connected",
+                    f"Successfully connected to BBD203 controller\n"
+                    f"Serial: {serial_number}\n\n"
+                    f"All channels enabled. Ready to home axes."
+                )
             else:
-                QMessageBox.warning(self, "Connection Error", "Failed to connect to ThorLabs stage")
+                # Show available devices
+                devices = self.thorlabs_stage.list_devices()
+                if devices:
+                    device_list = "\n".join([
+                        f"  Serial: {d['serial']} ({d['description']})"
+                        for d in devices
+                    ])
+                    msg = (f"Failed to connect to BBD203 with serial: {serial_number}\n\n"
+                           f"Available ThorLabs devices:\n{device_list}")
+                else:
+                    msg = (f"Failed to connect to BBD203 with serial: {serial_number}\n\n"
+                           f"No ThorLabs devices found.\n"
+                           f"Check USB connection and driver installation.")
+
+                QMessageBox.warning(self, "Connection Error", msg)
 
     def on_refresh_com_clicked(self):
         """Refresh available COM ports"""
