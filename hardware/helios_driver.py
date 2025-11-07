@@ -114,11 +114,11 @@ class HeliosDriver:
             self._connected = True
 
             # Read serial numbers
-            time.sleep(0.1)
+            time.sleep(0.5)
             self._controller_serial = self.query_controller_serial()
-            time.sleep(0.05)
+            time.sleep(0.5)
             self._head_serial = self.query_head_serial()
-            time.sleep(0.05)
+            time.sleep(0.5)
 
             # Read initial state
             self._update_cached_state()
@@ -148,7 +148,7 @@ class HeliosDriver:
 
             # Turn off laser before disconnecting
             self.set_laser_enable(False)
-            time.sleep(0.1)
+            time.sleep(0.5)
 
             # Close serial port
             if self._serial and self._serial.is_open:
@@ -246,7 +246,7 @@ class HeliosDriver:
             if not self._send_command(set_cmd):
                 continue
 
-            time.sleep(0.05)  # Wait for laser to process
+            time.sleep(0.5)  # Wait 500ms for laser to process (per documentation)
 
             # Query to verify
             response = self._query(query_cmd)
@@ -255,7 +255,7 @@ class HeliosDriver:
 
             if attempt < retries - 1:
                 print(f"DEBUG: Verification failed, retrying ({attempt + 1}/{retries})")
-                time.sleep(0.1)
+                time.sleep(0.5)
 
         print(f"ERROR: Failed to set and verify value after {retries} attempts")
         return False
@@ -465,11 +465,11 @@ class HeliosDriver:
         """
         temps = {}
         temps['pump'] = self.query_pump_temperature_c()
-        time.sleep(0.05)
+        time.sleep(0.5)
         temps['resonator'] = self.query_resonator_temperature_c()
-        time.sleep(0.05)
+        time.sleep(0.5)
         temps['qswitch'] = self.query_qswitch_temperature_c()
-        time.sleep(0.05)
+        time.sleep(0.5)
         temps['power_stage'] = self.query_power_stage_temperature_c()
         return temps
 
@@ -582,9 +582,9 @@ class HeliosDriver:
     def _update_cached_state(self):
         """Update all cached state from hardware"""
         self.query_laser_enable()
-        time.sleep(0.05)
+        time.sleep(0.5)
         self.query_frequency_hz()
-        time.sleep(0.05)
+        time.sleep(0.5)
         # Current is write-only in some modes, skip query
         self.query_status()
 
@@ -621,7 +621,7 @@ class HeliosDriver:
             return
 
         self.query_status()
-        time.sleep(0.05)
+        time.sleep(0.5)
         self.query_power_monitor_mw()
-        time.sleep(0.05)
+        time.sleep(0.5)
         self.query_all_temperatures()
