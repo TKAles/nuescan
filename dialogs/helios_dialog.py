@@ -1,11 +1,15 @@
 """
 Helios Device Settings Dialog
 Configures Helios laser parameters and COM port
+
+Copyright (C) 2025 Thomas Ales
+Licensed under GNU General Public License v2.0
 """
 
 import os
 from PyQt6 import uic
-from PyQt6.QtWidgets import QDialog
+from PyQt6.QtWidgets import QDialog, QMessageBox
+from hardware.helios_driver import HeliosDriver
 
 
 class HeliosDialog(QDialog):
@@ -50,11 +54,27 @@ class HeliosDialog(QDialog):
 
     def _populate_com_ports(self):
         """Populate available COM ports"""
-        # Stub implementation - would scan for actual ports
-        self.cb_helios_port.addItems([
-            "COM1", "COM2", "COM3", "COM4", "COM5",
-            "/dev/ttyUSB0", "/dev/ttyUSB1"
-        ])
+        # Get available ports from system
+        ports = HeliosDriver.list_available_ports()
+
+        if ports:
+            self.cb_helios_port.addItems(ports)
+            print(f"DEBUG: Found {len(ports)} available COM ports")
+        else:
+            # No ports found
+            self.cb_helios_port.addItem("No ports found")
+            print("WARNING: No COM ports found")
+
+    def refresh_com_ports(self):
+        """Refresh the COM port list"""
+        current_port = self.cb_helios_port.currentText()
+        self.cb_helios_port.clear()
+        self._populate_com_ports()
+
+        # Try to restore previous selection
+        index = self.cb_helios_port.findText(current_port)
+        if index >= 0:
+            self.cb_helios_port.setCurrentIndex(index)
 
     def on_port_changed(self, index):
         """Handle COM port selection change"""
@@ -73,21 +93,59 @@ class HeliosDialog(QDialog):
         """
         Get current Helios settings as a dictionary
 
+        Validates input ranges before returning.
+
         Returns:
-            dict: Helios device settings
+            dict: Helios device settings, or None if validation fails
         """
+        # Validate frequency
         try:
             frequency_hz = float(self.le_helios_frequency.text())
+            # Convert to period to check valid range (8000-60000 ns)
+            # Valid frequencies: ~16.7 kHz to 125 kHz
+            if frequency_hz < 16666 or frequency_hz > 125000:
+                QMessageBox.warning(
+                    self, "Invalid Frequency",
+                    f"Frequency must be between 16.7 kHz and 125 kHz\n"
+                    f"(Period: 8000-60000 ns)\n\n"
+                    f"Entered: {frequency_hz/1000:.1f} kHz"
+                )
+                return None
         except ValueError:
-            frequency_hz = 0.0
+            QMessageBox.warning(
+                self, "Invalid Frequency",
+                "Please enter a valid frequency value in Hz"
+            )
+            return None
 
+        # Validate current
         try:
             current_ma = float(self.le_helios_current.text())
+            if current_ma < 0 or current_ma > 7000:
+                QMessageBox.warning(
+                    self, "Invalid Current",
+                    f"Current must be between 0 and 7000 mA\n\n"
+                    f"Entered: {current_ma} mA"
+                )
+                return None
         except ValueError:
-            current_ma = 0.0
+            QMessageBox.warning(
+                self, "Invalid Current",
+                "Please enter a valid current value in mA"
+            )
+            return None
+
+        # Validate COM port selection
+        com_port = self.cb_helios_port.currentText()
+        if not com_port or com_port == "No ports found":
+            QMessageBox.warning(
+                self, "No Port Selected",
+                "Please select a valid COM port"
+            )
+            return None
 
         return {
-            'com_port': self.cb_helios_port.currentText(),
+            'com_port': com_port,
             'frequency_hz': frequency_hz,
             'current_ma': current_ma
         }

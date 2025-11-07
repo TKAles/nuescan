@@ -2,13 +2,17 @@
 Microscope Controller
 Handles communication with Genesis and Helios microscope/laser systems
 
-Genesis: Laser scanning microscope system
-Helios: Laser control system with frequency and current control
+Genesis: Laser scanning microscope system (stub)
+Helios: Laser control system with frequency and current control (full implementation)
 Both systems communicate via USB/Serial interfaces
+
+Copyright (C) 2025 Thomas Ales
+Licensed under GNU General Public License v2.0
 """
 
 import time
 from typing import Dict, Optional
+from hardware.helios_driver import HeliosDriver, PulseMode
 
 
 class MicroscopeController:
@@ -24,24 +28,22 @@ class MicroscopeController:
 
     def __init__(self):
         """Initialize microscope controller"""
-        # Genesis state
+        # Genesis state (stub)
         self._genesis_connected = False
         self._genesis_ready = False
         self._genesis_interlocked = False
         self._genesis_power_mw = 0.0
 
-        # Helios state
-        self._helios_connected = False
-        self._helios_ready = False
-        self._helios_interlocked = False
+        # Helios driver (full implementation)
+        self._helios_driver = HeliosDriver()
         self._helios_port = None
-        self._helios_frequency_hz = 0.0
-        self._helios_current_ma = 0.0
 
         # System interlock (master safety)
         self._system_interlocked = False
 
-        print("INFO: Microscope controller initialized (stub)")
+        print("INFO: Microscope controller initialized")
+        print("  - Genesis: Stub implementation")
+        print("  - Helios: Full RS-232 driver")
 
     # ==================== Genesis Methods ====================
 
@@ -132,15 +134,13 @@ class MicroscopeController:
         """
         print(f"DEBUG: Connecting to Helios on {port}")
 
-        # Stub implementation
-        time.sleep(0.1)
+        if not self._helios_driver.connect(port):
+            return False
 
         self._helios_port = port
-        self._helios_connected = True
-        self._helios_ready = True
-        self._helios_interlocked = True  # Assume interlocks OK
-
         print(f"INFO: Helios connected on {port}")
+        print(f"  Controller S/N: {self._helios_driver.get_controller_serial()}")
+        print(f"  Head S/N: {self._helios_driver.get_head_serial()}")
         return True
 
     def disconnect_helios(self) -> bool:
@@ -151,43 +151,93 @@ class MicroscopeController:
             bool: True if disconnection successful
         """
         print("DEBUG: Disconnecting from Helios")
+        return self._helios_driver.disconnect()
 
-        self._helios_connected = False
-        self._helios_ready = False
-
-        print("INFO: Helios disconnected")
-        return True
+    def is_helios_connected(self) -> bool:
+        """Check if Helios is connected"""
+        return self._helios_driver.is_connected()
 
     def apply_helios_settings(self, settings: Dict) -> bool:
         """
         Apply Helios configuration settings
 
+        This method connects and configures the Helios laser with the
+        specified parameters from the settings dialog.
+
         Args:
-            settings: Dictionary containing Helios parameters
+            settings: Dictionary containing:
+                - com_port: COM port name
+                - frequency_hz: Laser frequency in Hz
+                - current_ma: Laser diode current in mA
 
         Returns:
             bool: True if settings applied successfully
         """
+        if settings is None:
+            print("ERROR: No settings provided")
+            return False
+
         print("DEBUG: Applying Helios settings")
         print(f"  Port: {settings.get('com_port', 'N/A')}")
         print(f"  Frequency: {settings.get('frequency_hz', 0)} Hz")
         print(f"  Current: {settings.get('current_ma', 0)} mA")
 
-        # Update port if specified
+        # Connect if not already connected or port changed
         port = settings.get('com_port')
-        if port and port != self._helios_port:
-            if self._helios_connected:
+        if not port:
+            print("ERROR: No COM port specified")
+            return False
+
+        if not self.is_helios_connected() or port != self._helios_port:
+            if self.is_helios_connected():
                 self.disconnect_helios()
-            self.connect_helios(port)
+            if not self.connect_helios(port):
+                return False
 
-        self._helios_frequency_hz = settings.get('frequency_hz', 0.0)
-        self._helios_current_ma = settings.get('current_ma', 0.0)
+        # Set frequency
+        freq_hz = settings.get('frequency_hz', 0.0)
+        if freq_hz > 0:
+            if not self._helios_driver.set_frequency_hz(freq_hz):
+                print("ERROR: Failed to set frequency")
+                return False
+            time.sleep(0.05)
 
-        # Stub - would send commands to actual hardware
-        time.sleep(0.05)
+        # Set current
+        current_ma = settings.get('current_ma', 0.0)
+        if current_ma > 0:
+            if not self._helios_driver.set_current_ma(current_ma):
+                print("ERROR: Failed to set current")
+                return False
+            time.sleep(0.05)
 
-        print("INFO: Helios settings applied")
+        # Set to continuous pulsing mode by default
+        if not self._helios_driver.set_pulse_mode(PulseMode.CONTINUOUS_PULSING):
+            print("WARNING: Failed to set pulse mode")
+
+        print("INFO: Helios settings applied successfully")
         return True
+
+    def helios_enable_laser(self, enabled: bool) -> bool:
+        """
+        Enable or disable Helios laser
+
+        Args:
+            enabled: True to enable, False to disable
+
+        Returns:
+            bool: True if command successful
+        """
+        if not self.is_helios_connected():
+            print("ERROR: Helios not connected")
+            return False
+
+        return self._helios_driver.set_laser_enable(enabled)
+
+    def is_helios_laser_enabled(self) -> bool:
+        """Check if Helios laser is currently enabled"""
+        if not self.is_helios_connected():
+            return False
+        return self._helios_driver.is_laser_enabled()
 
     def get_helios_status(self) -> Dict[str, any]:
         """
@@ -196,14 +246,39 @@ class MicroscopeController:
         Returns:
             dict: Helios status information
         """
+        if not self.is_helios_connected():
+            return {
+                'connected': False,
+                'ready': False,
+                'interlocked': False,
+                'port': None,
+                'frequency_hz': 0.0,
+                'current_ma': 0.0,
+                'laser_enabled': False,
+                'power_mw': 0.0
+            }
+
+        # Get comprehensive status from driver
+        status = self._helios_driver.get_status()
+
         return {
-            'connected': self._helios_connected,
-            'ready': self._helios_ready,
-            'interlocked': self._helios_interlocked,
+            'connected': status['connected'],
+            'ready': not status['has_errors'],
+            'interlocked': not status['has_errors'],  # Use error state as interlock
             'port': self._helios_port,
-            'frequency_hz': self._helios_frequency_hz,
-            'current_ma': self._helios_current_ma
+            'frequency_hz': status['frequency_hz'],
+            'current_ma': status['current_ma'],
+            'laser_enabled': status['laser_enabled'],
+            'power_mw': status['power_mw'],
+            'operation_hours': status['operation_hours'],
+            'controller_serial': status['controller_serial'],
+            'head_serial': status['head_serial']
         }
+
+    def helios_update_status(self):
+        """Update Helios status from hardware"""
+        if self.is_helios_connected():
+            self._helios_driver.update_status()
 
     # ==================== Combined Status Methods ====================
 
@@ -214,10 +289,15 @@ class MicroscopeController:
         Returns:
             dict: Combined status for Genesis, Helios, and interlocks
         """
+        # Get Helios status from driver
+        helios_status = self.get_helios_status()
+        helios_ready = helios_status.get('ready', False)
+        helios_interlocked = helios_status.get('interlocked', False)
+
         return {
             # System-wide
             'interlocked': self._system_interlocked or (
-                self._genesis_interlocked and self._helios_interlocked
+                self._genesis_interlocked and helios_interlocked
             ),
 
             # Genesis
@@ -225,8 +305,8 @@ class MicroscopeController:
             'genesis_interlocked': self._genesis_interlocked,
 
             # Helios
-            'helios_ready': self._helios_ready,
-            'helios_interlocked': self._helios_interlocked
+            'helios_ready': helios_ready,
+            'helios_interlocked': helios_interlocked
         }
 
     def check_interlocks(self) -> bool:
@@ -242,9 +322,11 @@ class MicroscopeController:
             return False
 
         # Check Helios interlocks
-        if self._helios_connected and not self._helios_interlocked:
-            print("WARNING: Helios interlock not satisfied")
-            return False
+        if self.is_helios_connected():
+            helios_status = self.get_helios_status()
+            if not helios_status.get('interlocked', False):
+                print("WARNING: Helios interlock not satisfied")
+                return False
 
         return True
 
@@ -272,9 +354,11 @@ class MicroscopeController:
             print("ERROR: Genesis not ready")
             return False
 
-        if self._helios_connected and not self._helios_ready:
-            print("ERROR: Helios not ready")
-            return False
+        if self.is_helios_connected():
+            helios_status = self.get_helios_status()
+            if not helios_status.get('ready', False):
+                print("ERROR: Helios not ready")
+                return False
 
         # Configure for scan
         # Stub implementation
@@ -296,8 +380,8 @@ class MicroscopeController:
         if self._genesis_connected:
             self._genesis_ready = False
 
-        if self._helios_connected:
-            self._helios_ready = False
+        if self.is_helios_connected():
+            # Disable Helios laser immediately
+            self._helios_driver.set_laser_enable(False)
 
-        # Stub - would send emergency stop commands
         return True

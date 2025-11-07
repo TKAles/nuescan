@@ -54,8 +54,9 @@ nuescan/
 
 Hardware module implementation status:
 - **ThorLabs BBD203 Stage**: ✅ **FULLY IMPLEMENTED** - Production ready
+- **Helios Laser System**: ✅ **FULLY IMPLEMENTED** - Production ready
+- **Genesis Microscope**: Stub implementation for development
 - **T3R-SL Device**: Stub implementation for development
-- **Microscope Systems**: Stub implementation for development
 
 #### ThorLabs MLS Stage (BBD203 Motor Controller)
 - **File**: `hardware/thorlabs_stage.py`
@@ -65,17 +66,32 @@ Hardware module implementation status:
 - **Protocol**: APT binary protocol v42.1
 - **Usage**: Enter BBD203 serial number in UI, driver auto-finds USB port
 
+#### Helios Laser System
+- **Files**: `hardware/helios_driver.py`, `hardware/helios_protocol.py`
+- **Purpose**: Laser control with frequency, current, and pulse mode settings
+- **Connection**: RS-232 serial (9600 baud, 8N1)
+- **Status**: Full implementation - ready for real hardware
+- **Protocol**: ASCII-based RS-232 protocol
+- **Features**:
+  - Frequency control (16.7-125 kHz)
+  - Current control (0-7000 mA)
+  - Pulse mode control (single, gating, continuous)
+  - Temperature monitoring (4 sensors)
+  - Power monitoring
+  - Status register with error detection
+- **Usage**: Configure via Helios Settings dialog, COM port selected from dropdown
+
+#### Genesis Microscope
+- **File**: `hardware/microscope.py` (Genesis methods)
+- **Purpose**: Laser scanning microscope system
+- **Connection**: USB/Serial (not implemented)
+- **Status**: Stub - simulates microscope connection and status
+
 #### T3R-SL Device
 - **File**: `hardware/t3r_device.py`
 - **Purpose**: Timing and trigger control
 - **Connection**: USB/Serial (COM port)
 - **Status**: Stub - simulates device connection and status
-
-#### Microscope Systems (Genesis/Helios)
-- **File**: `hardware/microscope.py`
-- **Purpose**: Laser system control
-- **Connection**: USB/Serial
-- **Status**: Stub - simulates laser parameters and interlocks
 
 ### Implementing Real Hardware Support
 
