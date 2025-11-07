@@ -18,6 +18,8 @@ import time
 from typing import Dict, Optional
 
 from hardware.bbd203_driver import BBD203Driver
+from hardware.bbd203_protocol import TriggerMode
+from hardware.stage_settings import StageSettings
 
 
 class ThorLabsStage:
@@ -36,20 +38,24 @@ class ThorLabsStage:
     Y_AXIS = 2
     Z_AXIS = 3
 
-    def __init__(self, encoder_counts_per_mm: int = 20000):
+    def __init__(self, encoder_counts_per_mm: int = 20000, settings_file: Optional[str] = None):
         """
         Initialize ThorLabs stage controller
 
         Args:
             encoder_counts_per_mm: Encoder resolution (default: 20000 for MLS203)
+            settings_file: Path to settings file (default: ~/.nuescan/stage_settings.json)
         """
         self._driver = BBD203Driver(encoder_counts_per_mm)
         self._port = None
 
+        # Settings manager
+        self.settings = StageSettings(settings_file)
+
         # Scanning state
         self._scanning = False
 
-        # Default velocity and acceleration
+        # Default velocity and acceleration (can be overridden by settings)
         self._default_velocity = 1.0  # mm/s
         self._default_accel = 5.0     # mm/s²
 
@@ -86,13 +92,8 @@ class ThorLabsStage:
         self._driver.enable_channel(self.Z_AXIS, True)
         time.sleep(0.1)
 
-        # Set default velocity parameters for all axes
-        self._driver.set_velocity_params(self.X_AXIS, self._default_velocity, self._default_accel)
-        time.sleep(0.05)
-        self._driver.set_velocity_params(self.Y_AXIS, self._default_velocity, self._default_accel)
-        time.sleep(0.05)
-        self._driver.set_velocity_params(self.Z_AXIS, self._default_velocity, self._default_accel)
-        time.sleep(0.05)
+        # Apply startup settings from configuration
+        self.apply_startup_settings()
 
         print("INFO: Stage connected and channels enabled")
         return True
@@ -403,6 +404,235 @@ class ThorLabsStage:
         """
         return BBD203Driver.list_thorlabs_devices()
 
+    # ==================== Settings Management ====================
+
+    def apply_startup_settings(self) -> bool:
+        """
+        Apply saved settings to the stage on startup
+
+        This includes:
+        - Velocity parameters for all axes
+        - Acceleration parameters for all axes
+        - Trigger configuration for all axes
+
+        Returns:
+            bool: True if all settings applied successfully
+        """
+        print("INFO: Applying startup settings to stage")
+
+        success = True
+
+        # Apply velocity and acceleration settings
+        velocities = self.settings.get_all_velocities()
+        accelerations = self.settings.get_all_accelerations()
+
+        print(f"  Velocity settings: X={velocities['x_axis']} mm/s, "
+              f"Y={velocities['y_axis']} mm/s, Z={velocities['z_axis']} mm/s")
+        print(f"  Acceleration settings: X={accelerations['x_axis']} mm/s², "
+              f"Y={accelerations['y_axis']} mm/s², Z={accelerations['z_axis']} mm/s²")
+
+        # Set velocity/acceleration for each axis
+        if not self._driver.set_velocity_params(
+            self.X_AXIS, velocities['x_axis'], accelerations['x_axis']
+        ):
+            success = False
+        time.sleep(0.05)
+
+        if not self._driver.set_velocity_params(
+            self.Y_AXIS, velocities['y_axis'], accelerations['y_axis']
+        ):
+            success = False
+        time.sleep(0.05)
+
+        if not self._driver.set_velocity_params(
+            self.Z_AXIS, velocities['z_axis'], accelerations['z_axis']
+        ):
+            success = False
+        time.sleep(0.05)
+
+        # Apply trigger configuration for each axis
+        for axis_name, channel in [('x_axis', self.X_AXIS),
+                                   ('y_axis', self.Y_AXIS),
+                                   ('z_axis', self.Z_AXIS)]:
+            trigger_config = self.settings.get_trigger_config(axis_name)
+
+            if not self._driver.set_trigger_mode(
+                channel,
+                trigger_config['mode'],
+                trigger_config['polarity'],
+                trigger_config['start_pos_fwd'],
+                trigger_config['start_pos_rev'],
+                trigger_config['interval_fwd'],
+                trigger_config['interval_rev']
+            ):
+                success = False
+            time.sleep(0.05)
+
+        if success:
+            print("INFO: All startup settings applied successfully")
+        else:
+            print("WARNING: Some startup settings failed to apply")
+
+        return success
+
+    def save_current_settings(self) -> bool:
+        """
+        Save current settings to file
+
+        Returns:
+            bool: True if saved successfully
+        """
+        return self.settings.save()
+
+    def reload_settings(self) -> bool:
+        """
+        Reload settings from file
+
+        Returns:
+            bool: True if reloaded successfully
+        """
+        return self.settings.load()
+
+    def configure_velocity(self, x: Optional[float] = None,
+                          y: Optional[float] = None,
+                          z: Optional[float] = None,
+                          save: bool = True) -> bool:
+        """
+        Configure velocity for one or more axes
+
+        Args:
+            x: X-axis velocity in mm/s (None to keep current)
+            y: Y-axis velocity in mm/s (None to keep current)
+            z: Z-axis velocity in mm/s (None to keep current)
+            save: Save settings to file after updating
+
+        Returns:
+            bool: True if configuration successful
+        """
+        success = True
+
+        if x is not None:
+            self.settings.set_velocity('x_axis', x)
+            accel = self.settings.get_acceleration('x_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.X_AXIS, x, accel)
+                time.sleep(0.05)
+
+        if y is not None:
+            self.settings.set_velocity('y_axis', y)
+            accel = self.settings.get_acceleration('y_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.Y_AXIS, y, accel)
+                time.sleep(0.05)
+
+        if z is not None:
+            self.settings.set_velocity('z_axis', z)
+            accel = self.settings.get_acceleration('z_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.Z_AXIS, z, accel)
+                time.sleep(0.05)
+
+        if save:
+            self.settings.save()
+
+        return success
+
+    def configure_acceleration(self, x: Optional[float] = None,
+                              y: Optional[float] = None,
+                              z: Optional[float] = None,
+                              save: bool = True) -> bool:
+        """
+        Configure acceleration for one or more axes
+
+        Args:
+            x: X-axis acceleration in mm/s² (None to keep current)
+            y: Y-axis acceleration in mm/s² (None to keep current)
+            z: Z-axis acceleration in mm/s² (None to keep current)
+            save: Save settings to file after updating
+
+        Returns:
+            bool: True if configuration successful
+        """
+        success = True
+
+        if x is not None:
+            self.settings.set_acceleration('x_axis', x)
+            vel = self.settings.get_velocity('x_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.X_AXIS, vel, x)
+                time.sleep(0.05)
+
+        if y is not None:
+            self.settings.set_acceleration('y_axis', y)
+            vel = self.settings.get_velocity('y_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.Y_AXIS, vel, y)
+                time.sleep(0.05)
+
+        if z is not None:
+            self.settings.set_acceleration('z_axis', z)
+            vel = self.settings.get_velocity('z_axis')
+            if self.is_connected():
+                success &= self._driver.set_velocity_params(self.Z_AXIS, vel, z)
+                time.sleep(0.05)
+
+        if save:
+            self.settings.save()
+
+        return success
+
+    def configure_trigger(self, axis: str, mode: int,
+                         polarity: int = 0x01,
+                         start_pos_fwd: float = 0.0,
+                         start_pos_rev: float = 0.0,
+                         interval_fwd: float = 0.0,
+                         interval_rev: float = 0.0,
+                         save: bool = True) -> bool:
+        """
+        Configure trigger for specific axis
+
+        Args:
+            axis: Axis name ('X', 'Y', or 'Z')
+            mode: Trigger mode (TriggerMode enum value)
+            polarity: Trigger polarity (0x01 = active high, 0x02 = active low)
+            start_pos_fwd: Start position for forward trigger (mm)
+            start_pos_rev: Start position for reverse trigger (mm)
+            interval_fwd: Interval for forward trigger (mm)
+            interval_rev: Interval for reverse trigger (mm)
+            save: Save settings to file after updating
+
+        Returns:
+            bool: True if configuration successful
+        """
+        axis = axis.upper()
+        if axis not in ['X', 'Y', 'Z']:
+            print(f"ERROR: Invalid axis: {axis}")
+            return False
+
+        axis_name = f"{axis.lower()}_axis"
+        channel = {'X': self.X_AXIS, 'Y': self.Y_AXIS, 'Z': self.Z_AXIS}[axis]
+
+        # Update settings
+        self.settings.set_trigger_config(
+            axis_name, mode, polarity,
+            start_pos_fwd, start_pos_rev,
+            interval_fwd, interval_rev
+        )
+
+        # Apply to hardware if connected
+        success = True
+        if self.is_connected():
+            success = self._driver.set_trigger_mode(
+                channel, mode, polarity,
+                start_pos_fwd, start_pos_rev,
+                interval_fwd, interval_rev
+            )
+
+        if save:
+            self.settings.save()
+
+        return success
+
     def get_detailed_status(self) -> Dict:
         """
         Get detailed status of all channels
@@ -416,5 +646,6 @@ class ThorLabsStage:
             'x_axis': self._driver.get_channel_status(self.X_AXIS),
             'y_axis': self._driver.get_channel_status(self.Y_AXIS),
             'z_axis': self._driver.get_channel_status(self.Z_AXIS),
-            'position': self.get_position()
+            'position': self.get_position(),
+            'settings': self.settings.get_all_settings()
         }

@@ -70,6 +70,14 @@ class MessageID(IntEnum):
     MGMSG_MOT_REQ_STATUSBITS = 0x0429
     MGMSG_MOT_GET_STATUSBITS = 0x042A
 
+    # Digital I/O and Trigger
+    MGMSG_RACK_SET_DIGOUTPUTS = 0x0228
+    MGMSG_RACK_REQ_DIGOUTPUTS = 0x0229
+    MGMSG_RACK_GET_DIGOUTPUTS = 0x0230
+    MGMSG_MOT_SET_TRIGGER = 0x0500
+    MGMSG_MOT_REQ_TRIGGER = 0x0501
+    MGMSG_MOT_GET_TRIGGER = 0x0502
+
 
 # Destination addresses
 class Destination(IntEnum):
@@ -102,6 +110,18 @@ class StatusBits(IntEnum):
     IN_MOTION_REVERSE = 0x00000020
     JOGGING_FORWARD = 0x00000040
     JOGGING_REVERSE = 0x00000080
+
+
+# Trigger modes
+class TriggerMode(IntEnum):
+    """Trigger mode definitions"""
+    DISABLED = 0x00
+    IN_OUT_RELATIVE_MOVE = 0x01
+    IN_OUT_ABSOLUTE_MOVE = 0x02
+    IN_OUT_HOME = 0x03
+    IN_OUT_STOP = 0x04
+    OUT_ONLY = 0x10
+    OUT_POSITION = 0x11
 
 
 class APTMessage:
@@ -226,6 +246,42 @@ class APTMessage:
         # Header only message, params in bytes 2-3
         _, enable_state, channel, _, _ = struct.unpack('<HBBBB', data[:6])
         return channel, (enable_state == 0x01)
+
+    @staticmethod
+    def parse_trigger_config(data: bytes) -> Tuple[int, int, int, int, int, int, int]:
+        """
+        Parse MGMSG_MOT_GET_TRIGGER response
+
+        Returns:
+            tuple: (channel, trigger_mode, polarity, start_pos_fwd, start_pos_rev,
+                   interval_fwd, interval_rev, num_pulses, pulse_width, num_cycles)
+        """
+        if len(data) < 28:
+            raise ValueError("Insufficient data for trigger config")
+
+        # Parse data packet (22 bytes starting at byte 6)
+        channel, mode, polarity, start_fwd, start_rev, interval_fwd, interval_rev = \
+            struct.unpack('<HBBIIIi', data[6:28])
+
+        # Extended parameters if available
+        num_pulses = 0
+        pulse_width = 0
+        num_cycles = 0
+        if len(data) >= 40:
+            num_pulses, pulse_width, num_cycles = struct.unpack('<III', data[28:40])
+
+        return (channel, mode, polarity, start_fwd, start_rev,
+                interval_fwd, interval_rev, num_pulses, pulse_width, num_cycles)
+
+    @staticmethod
+    def parse_digital_outputs(data: bytes) -> Tuple[int, int]:
+        """Parse MGMSG_RACK_GET_DIGOUTPUTS response"""
+        if len(data) < 6:
+            raise ValueError("Insufficient data for digital outputs")
+
+        # Header only message, params in bytes 2-3
+        _, output_state, _, _, _ = struct.unpack('<HBBBB', data[:6])
+        return output_state
 
 
 class APTProtocol:
@@ -406,4 +462,71 @@ class APTProtocol:
         data = struct.pack('<HI', 0x0001, pos_apt)
         return APTMessage.build_with_data(
             MessageID.MGMSG_MOT_SET_POSCOUNTER, dest, data
+        )
+
+    def cmd_set_trigger(self, channel: int, mode: int, polarity: int = 0x01,
+                       start_pos_fwd: float = 0.0, start_pos_rev: float = 0.0,
+                       interval_fwd: float = 0.0, interval_rev: float = 0.0) -> bytes:
+        """
+        Build set trigger configuration command
+
+        Args:
+            channel: Channel number (1, 2, or 3)
+            mode: Trigger mode (TriggerMode enum value)
+            polarity: Trigger polarity (0x01 = active high, 0x02 = active low)
+            start_pos_fwd: Start position for forward trigger (mm)
+            start_pos_rev: Start position for reverse trigger (mm)
+            interval_fwd: Interval for forward trigger (mm)
+            interval_rev: Interval for reverse trigger (mm)
+
+        Returns:
+            bytes: Complete trigger configuration command
+        """
+        dest = Destination.CHANNEL_1 + (channel - 1)
+
+        # Convert positions to APT units
+        start_fwd_apt = self.position_to_apt(start_pos_fwd)
+        start_rev_apt = self.position_to_apt(start_pos_rev)
+        interval_fwd_apt = self.position_to_apt(interval_fwd)
+        interval_rev_apt = int(self.position_to_apt(interval_rev))  # Signed
+
+        data = struct.pack('<HBBIIIi',
+            0x0001,              # Channel 1 in data packet
+            mode,                # Trigger mode
+            polarity,            # Polarity
+            start_fwd_apt,       # Start position forward
+            start_rev_apt,       # Start position reverse
+            interval_fwd_apt,    # Interval forward
+            interval_rev_apt     # Interval reverse (signed)
+        )
+
+        return APTMessage.build_with_data(
+            MessageID.MGMSG_MOT_SET_TRIGGER, dest, data
+        )
+
+    def cmd_req_trigger(self, channel: int) -> bytes:
+        """Build request trigger configuration command"""
+        dest = Destination.CHANNEL_1 + (channel - 1)
+        return APTMessage.build_header_only(
+            MessageID.MGMSG_MOT_REQ_TRIGGER, 0x01, 0x00, dest
+        )
+
+    def cmd_set_digital_outputs(self, output_bits: int) -> bytes:
+        """
+        Build set digital outputs command
+
+        Args:
+            output_bits: Bit pattern for digital outputs (0x00 to 0xFF)
+
+        Returns:
+            bytes: Digital output command
+        """
+        return APTMessage.build_header_only(
+            MessageID.MGMSG_RACK_SET_DIGOUTPUTS, output_bits, 0x00, Destination.USB
+        )
+
+    def cmd_req_digital_outputs(self) -> bytes:
+        """Build request digital outputs command"""
+        return APTMessage.build_header_only(
+            MessageID.MGMSG_RACK_REQ_DIGOUTPUTS, 0x00, 0x00, Destination.USB
         )

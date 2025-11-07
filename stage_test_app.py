@@ -12,12 +12,13 @@ import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QPushButton, QLabel, QLineEdit, QComboBox, QTextEdit,
-    QSpinBox, QDoubleSpinBox, QCheckBox, QGridLayout, QMessageBox
+    QSpinBox, QDoubleSpinBox, QCheckBox, QGridLayout, QMessageBox, QTabWidget
 )
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QFont
 
 from hardware.thorlabs_stage import ThorLabsStage
+from hardware.bbd203_protocol import TriggerMode
 
 
 class StageTestWindow(QMainWindow):
@@ -56,14 +57,29 @@ class StageTestWindow(QMainWindow):
         # Connection section
         main_layout.addWidget(self.create_connection_group())
 
-        # Control sections in horizontal layout
+        # Tabbed interface for different sections
+        tab_widget = QTabWidget()
+
+        # Control tab
+        control_widget = QWidget()
+        control_layout = QVBoxLayout(control_widget)
+
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(self.create_homing_group())
         controls_layout.addWidget(self.create_motion_group())
-        main_layout.addLayout(controls_layout)
+        control_layout.addLayout(controls_layout)
 
-        # Status section
-        main_layout.addWidget(self.create_status_group())
+        control_layout.addWidget(self.create_status_group())
+
+        tab_widget.addTab(control_widget, "Control")
+
+        # Settings tab
+        settings_widget = QWidget()
+        settings_layout = QVBoxLayout(settings_widget)
+        settings_layout.addWidget(self.create_settings_group())
+        tab_widget.addTab(settings_widget, "Settings")
+
+        main_layout.addWidget(tab_widget)
 
         # Log section
         main_layout.addWidget(self.create_log_group())
@@ -224,6 +240,135 @@ class StageTestWindow(QMainWindow):
         group.setLayout(layout)
         return group
 
+    def create_settings_group(self) -> QGroupBox:
+        """Create settings configuration group"""
+        group = QGroupBox("Stage Settings")
+        layout = QVBoxLayout()
+
+        # Velocity settings
+        vel_group = QGroupBox("Velocity (mm/s)")
+        vel_layout = QGridLayout()
+
+        vel_layout.addWidget(QLabel("X Axis:"), 0, 0)
+        self.vel_x_spin = QDoubleSpinBox()
+        self.vel_x_spin.setRange(0.01, 10.0)
+        self.vel_x_spin.setDecimals(3)
+        self.vel_x_spin.setSingleStep(0.1)
+        self.vel_x_spin.setValue(1.0)
+        vel_layout.addWidget(self.vel_x_spin, 0, 1)
+
+        vel_layout.addWidget(QLabel("Y Axis:"), 1, 0)
+        self.vel_y_spin = QDoubleSpinBox()
+        self.vel_y_spin.setRange(0.01, 10.0)
+        self.vel_y_spin.setDecimals(3)
+        self.vel_y_spin.setSingleStep(0.1)
+        self.vel_y_spin.setValue(1.0)
+        vel_layout.addWidget(self.vel_y_spin, 1, 1)
+
+        vel_layout.addWidget(QLabel("Z Axis:"), 2, 0)
+        self.vel_z_spin = QDoubleSpinBox()
+        self.vel_z_spin.setRange(0.01, 10.0)
+        self.vel_z_spin.setDecimals(3)
+        self.vel_z_spin.setSingleStep(0.1)
+        self.vel_z_spin.setValue(1.0)
+        vel_layout.addWidget(self.vel_z_spin, 2, 1)
+
+        self.apply_vel_btn = QPushButton("Apply Velocity")
+        self.apply_vel_btn.clicked.connect(self.apply_velocity_settings)
+        self.apply_vel_btn.setEnabled(False)
+        vel_layout.addWidget(self.apply_vel_btn, 3, 0, 1, 2)
+
+        vel_group.setLayout(vel_layout)
+        layout.addWidget(vel_group)
+
+        # Acceleration settings
+        accel_group = QGroupBox("Acceleration (mm/s²)")
+        accel_layout = QGridLayout()
+
+        accel_layout.addWidget(QLabel("X Axis:"), 0, 0)
+        self.accel_x_spin = QDoubleSpinBox()
+        self.accel_x_spin.setRange(0.1, 100.0)
+        self.accel_x_spin.setDecimals(2)
+        self.accel_x_spin.setSingleStep(1.0)
+        self.accel_x_spin.setValue(5.0)
+        accel_layout.addWidget(self.accel_x_spin, 0, 1)
+
+        accel_layout.addWidget(QLabel("Y Axis:"), 1, 0)
+        self.accel_y_spin = QDoubleSpinBox()
+        self.accel_y_spin.setRange(0.1, 100.0)
+        self.accel_y_spin.setDecimals(2)
+        self.accel_y_spin.setSingleStep(1.0)
+        self.accel_y_spin.setValue(5.0)
+        accel_layout.addWidget(self.accel_y_spin, 1, 1)
+
+        accel_layout.addWidget(QLabel("Z Axis:"), 2, 0)
+        self.accel_z_spin = QDoubleSpinBox()
+        self.accel_z_spin.setRange(0.1, 100.0)
+        self.accel_z_spin.setDecimals(2)
+        self.accel_z_spin.setSingleStep(1.0)
+        self.accel_z_spin.setValue(5.0)
+        accel_layout.addWidget(self.accel_z_spin, 2, 1)
+
+        self.apply_accel_btn = QPushButton("Apply Acceleration")
+        self.apply_accel_btn.clicked.connect(self.apply_acceleration_settings)
+        self.apply_accel_btn.setEnabled(False)
+        accel_layout.addWidget(self.apply_accel_btn, 3, 0, 1, 2)
+
+        accel_group.setLayout(accel_layout)
+        layout.addWidget(accel_group)
+
+        # Trigger settings
+        trigger_group = QGroupBox("Trigger Configuration")
+        trigger_layout = QGridLayout()
+
+        trigger_layout.addWidget(QLabel("Axis:"), 0, 0)
+        self.trigger_axis_combo = QComboBox()
+        self.trigger_axis_combo.addItems(["X", "Y", "Z"])
+        trigger_layout.addWidget(self.trigger_axis_combo, 0, 1)
+
+        trigger_layout.addWidget(QLabel("Mode:"), 1, 0)
+        self.trigger_mode_combo = QComboBox()
+        self.trigger_mode_combo.addItems([
+            "Disabled",
+            "In/Out Relative Move",
+            "In/Out Absolute Move",
+            "In/Out Home",
+            "In/Out Stop",
+            "Out Only",
+            "Out Position"
+        ])
+        trigger_layout.addWidget(self.trigger_mode_combo, 1, 1)
+
+        trigger_layout.addWidget(QLabel("Polarity:"), 2, 0)
+        self.trigger_polarity_combo = QComboBox()
+        self.trigger_polarity_combo.addItems(["Active High", "Active Low"])
+        trigger_layout.addWidget(self.trigger_polarity_combo, 2, 1)
+
+        self.apply_trigger_btn = QPushButton("Apply Trigger Settings")
+        self.apply_trigger_btn.clicked.connect(self.apply_trigger_settings)
+        self.apply_trigger_btn.setEnabled(False)
+        trigger_layout.addWidget(self.apply_trigger_btn, 3, 0, 1, 2)
+
+        trigger_group.setLayout(trigger_layout)
+        layout.addWidget(trigger_group)
+
+        # Save/Load buttons
+        buttons_layout = QHBoxLayout()
+
+        self.load_settings_btn = QPushButton("Load Settings")
+        self.load_settings_btn.clicked.connect(self.load_settings)
+        buttons_layout.addWidget(self.load_settings_btn)
+
+        self.save_settings_btn = QPushButton("Save Settings")
+        self.save_settings_btn.clicked.connect(self.save_settings)
+        self.save_settings_btn.setEnabled(False)
+        buttons_layout.addWidget(self.save_settings_btn)
+
+        layout.addLayout(buttons_layout)
+
+        group.setLayout(layout)
+        return group
+
     def create_status_group(self) -> QGroupBox:
         """Create status display group"""
         group = QGroupBox("Status")
@@ -339,6 +484,13 @@ class StageTestWindow(QMainWindow):
             self.move_abs_btn.setEnabled(True)
             self.move_rel_btn.setEnabled(True)
             self.stop_btn.setEnabled(True)
+            self.apply_vel_btn.setEnabled(True)
+            self.apply_accel_btn.setEnabled(True)
+            self.apply_trigger_btn.setEnabled(True)
+            self.save_settings_btn.setEnabled(True)
+
+            # Load current settings into UI
+            self.load_settings_to_ui()
         else:
             self.log("ERROR: Failed to connect to stage")
 
@@ -362,6 +514,10 @@ class StageTestWindow(QMainWindow):
             self.move_abs_btn.setEnabled(False)
             self.move_rel_btn.setEnabled(False)
             self.stop_btn.setEnabled(False)
+            self.apply_vel_btn.setEnabled(False)
+            self.apply_accel_btn.setEnabled(False)
+            self.apply_trigger_btn.setEnabled(False)
+            self.save_settings_btn.setEnabled(False)
         else:
             self.log("ERROR: Failed to disconnect")
 
@@ -475,6 +631,130 @@ class StageTestWindow(QMainWindow):
 
         except Exception as e:
             self.log(f"ERROR: Failed to update status: {e}")
+
+    # ==================== Settings Methods ====================
+
+    def load_settings_to_ui(self):
+        """Load current settings from stage into UI"""
+        if not self.stage.is_connected():
+            return
+
+        try:
+            # Get current settings
+            velocities = self.stage.settings.get_all_velocities()
+            accelerations = self.stage.settings.get_all_accelerations()
+
+            # Update velocity spinboxes
+            self.vel_x_spin.setValue(velocities['x_axis'])
+            self.vel_y_spin.setValue(velocities['y_axis'])
+            self.vel_z_spin.setValue(velocities['z_axis'])
+
+            # Update acceleration spinboxes
+            self.accel_x_spin.setValue(accelerations['x_axis'])
+            self.accel_y_spin.setValue(accelerations['y_axis'])
+            self.accel_z_spin.setValue(accelerations['z_axis'])
+
+            # Update trigger settings for X axis (default)
+            trigger_config = self.stage.settings.get_trigger_config('x_axis')
+            self.trigger_mode_combo.setCurrentIndex(trigger_config.get('mode', 0))
+
+            polarity = trigger_config.get('polarity', 0x01)
+            self.trigger_polarity_combo.setCurrentIndex(0 if polarity == 0x01 else 1)
+
+            self.log("Settings loaded into UI")
+
+        except Exception as e:
+            self.log(f"ERROR: Failed to load settings to UI: {e}")
+
+    def apply_velocity_settings(self):
+        """Apply velocity settings to stage"""
+        self.log("Applying velocity settings...")
+
+        x = self.vel_x_spin.value()
+        y = self.vel_y_spin.value()
+        z = self.vel_z_spin.value()
+
+        if self.stage.configure_velocity(x=x, y=y, z=z, save=False):
+            self.log(f"Velocity settings applied: X={x}, Y={y}, Z={z} mm/s")
+        else:
+            self.log("ERROR: Failed to apply velocity settings")
+
+    def apply_acceleration_settings(self):
+        """Apply acceleration settings to stage"""
+        self.log("Applying acceleration settings...")
+
+        x = self.accel_x_spin.value()
+        y = self.accel_y_spin.value()
+        z = self.accel_z_spin.value()
+
+        if self.stage.configure_acceleration(x=x, y=y, z=z, save=False):
+            self.log(f"Acceleration settings applied: X={x}, Y={y}, Z={z} mm/s²")
+        else:
+            self.log("ERROR: Failed to apply acceleration settings")
+
+    def apply_trigger_settings(self):
+        """Apply trigger settings to stage"""
+        self.log("Applying trigger settings...")
+
+        axis = self.trigger_axis_combo.currentText()
+        mode_index = self.trigger_mode_combo.currentIndex()
+
+        # Map mode index to TriggerMode enum
+        mode_map = {
+            0: TriggerMode.DISABLED,
+            1: TriggerMode.IN_OUT_RELATIVE_MOVE,
+            2: TriggerMode.IN_OUT_ABSOLUTE_MOVE,
+            3: TriggerMode.IN_OUT_HOME,
+            4: TriggerMode.IN_OUT_STOP,
+            5: TriggerMode.OUT_ONLY,
+            6: TriggerMode.OUT_POSITION
+        }
+        mode = mode_map.get(mode_index, TriggerMode.DISABLED)
+
+        # Get polarity
+        polarity = 0x01 if self.trigger_polarity_combo.currentIndex() == 0 else 0x02
+
+        if self.stage.configure_trigger(axis, mode, polarity=polarity, save=False):
+            mode_name = self.trigger_mode_combo.currentText()
+            pol_name = self.trigger_polarity_combo.currentText()
+            self.log(f"Trigger settings applied: {axis} axis, {mode_name}, {pol_name}")
+        else:
+            self.log("ERROR: Failed to apply trigger settings")
+
+    def save_settings(self):
+        """Save current settings to file"""
+        self.log("Saving settings to file...")
+
+        if self.stage.save_current_settings():
+            self.log("Settings saved successfully")
+            QMessageBox.information(self, "Settings Saved",
+                                   "Stage settings have been saved successfully.")
+        else:
+            self.log("ERROR: Failed to save settings")
+            QMessageBox.warning(self, "Save Failed",
+                               "Failed to save stage settings.")
+
+    def load_settings(self):
+        """Load settings from file"""
+        self.log("Loading settings from file...")
+
+        if self.stage.reload_settings():
+            self.log("Settings loaded successfully")
+
+            # Update UI with loaded settings
+            if self.stage.is_connected():
+                self.load_settings_to_ui()
+
+            # Apply to hardware if connected
+            if self.stage.is_connected():
+                self.stage.apply_startup_settings()
+
+            QMessageBox.information(self, "Settings Loaded",
+                                   "Stage settings have been loaded successfully.")
+        else:
+            self.log("WARNING: No settings file found, using defaults")
+            QMessageBox.information(self, "No Settings Found",
+                                   "No settings file found. Using default values.")
 
     # ==================== Logging ====================
 

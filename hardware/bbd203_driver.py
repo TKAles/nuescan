@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Callable, Tuple
 from queue import Queue, Empty
 
 from hardware.bbd203_protocol import (
-    APTProtocol, APTMessage, MessageID, StatusBits, Destination
+    APTProtocol, APTMessage, MessageID, StatusBits, TriggerMode, Destination
 )
 
 
@@ -811,3 +811,100 @@ class BBD203Driver:
         """Register callback for home complete event"""
         if channel in [1, 2, 3]:
             self._home_complete_callbacks[channel].append(callback)
+
+    # ==================== Trigger Configuration ====================
+
+    def set_trigger_mode(self, channel: int, mode: int, polarity: int = 0x01,
+                        start_pos_fwd: float = 0.0, start_pos_rev: float = 0.0,
+                        interval_fwd: float = 0.0, interval_rev: float = 0.0) -> bool:
+        """
+        Set trigger configuration for a channel
+
+        Args:
+            channel: Channel number (1, 2, or 3)
+            mode: Trigger mode (TriggerMode enum value)
+            polarity: Trigger polarity (0x01 = active high, 0x02 = active low)
+            start_pos_fwd: Start position for forward trigger (mm)
+            start_pos_rev: Start position for reverse trigger (mm)
+            interval_fwd: Interval for forward trigger (mm)
+            interval_rev: Interval for reverse trigger (mm)
+
+        Returns:
+            bool: True if trigger configuration set successfully
+
+        Example:
+            # Disable trigger
+            driver.set_trigger_mode(1, TriggerMode.DISABLED)
+
+            # Enable trigger output on motion
+            driver.set_trigger_mode(1, TriggerMode.OUT_ONLY)
+
+            # Trigger at specific positions
+            driver.set_trigger_mode(1, TriggerMode.OUT_POSITION,
+                                   start_pos_fwd=10.0, interval_fwd=1.0)
+        """
+        if channel not in [1, 2, 3]:
+            print(f"ERROR: Invalid channel number: {channel}")
+            return False
+
+        print(f"DEBUG: Setting trigger mode for channel {channel}: mode={mode}")
+
+        cmd = self.protocol.cmd_set_trigger(
+            channel, mode, polarity, start_pos_fwd, start_pos_rev,
+            interval_fwd, interval_rev
+        )
+
+        if self._send_command(cmd):
+            time.sleep(0.1)  # Wait for controller to process
+            return True
+        return False
+
+    def get_trigger_config(self, channel: int) -> Optional[Dict]:
+        """
+        Get current trigger configuration for a channel
+
+        Args:
+            channel: Channel number (1, 2, or 3)
+
+        Returns:
+            dict: Trigger configuration or None if unavailable
+        """
+        if channel not in [1, 2, 3]:
+            return None
+
+        cmd = self.protocol.cmd_req_trigger(channel)
+        if not self._send_command(cmd):
+            return None
+
+        # Note: In a complete implementation, would wait for response
+        # For now, returning None as response handling would need queue
+        print("WARNING: get_trigger_config not fully implemented (requires response queue)")
+        return None
+
+    # ==================== Digital I/O ====================
+
+    def set_digital_outputs(self, output_bits: int) -> bool:
+        """
+        Set digital output states
+
+        Args:
+            output_bits: Bit pattern for outputs (0x00 to 0xFF)
+
+        Returns:
+            bool: True if digital outputs set successfully
+
+        Note:
+            Digital outputs share pins with trigger outputs. Ensure
+            trigger mode is disabled before using digital outputs.
+        """
+        if not (0 <= output_bits <= 0xFF):
+            print(f"ERROR: Invalid output bits: {output_bits}")
+            return False
+
+        print(f"DEBUG: Setting digital outputs: 0x{output_bits:02X}")
+
+        cmd = self.protocol.cmd_set_digital_outputs(output_bits)
+        if self._send_command(cmd):
+            time.sleep(0.05)
+            return True
+        return False
