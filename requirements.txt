@@ -1,0 +1,19 @@
+# nueScan - SRAS Scan Planning and Control Software
+# Python Dependencies
+
+# GUI Framework
+PyQt6>=6.4.0
+
+# Serial Communication (for hardware interfaces)
+pyserial>=3.5
+
+# VISA instrument control (for oscilloscope)
+pyvisa>=1.13.0
+pyvisa-py>=0.7.0
+
+# Optional: For enhanced serial port detection
+# pyserial-asyncio>=0.6
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-qt>=4.0.0
