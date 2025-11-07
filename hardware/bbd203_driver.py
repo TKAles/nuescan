@@ -247,15 +247,15 @@ class BBD203Driver:
             self._rx_thread.start()
 
             # Initialize controller
-            time.sleep(0.5)  # Allow thread to start (500ms per documentation)
+            time.sleep(0.1)  # Allow thread to start
 
             # Request hardware info
             self._send_command(self.protocol.cmd_req_hw_info())
-            time.sleep(0.5)
+            time.sleep(0.1)
 
             # Start automatic status updates
             self._send_command(self.protocol.cmd_start_update_msgs())
-            time.sleep(0.5)
+            time.sleep(0.1)
 
             print(f"INFO: Successfully connected to BBD203 on {port}")
             return True
@@ -280,7 +280,7 @@ class BBD203Driver:
 
             # Stop status updates
             self._send_command(self.protocol.cmd_stop_update_msgs())
-            time.sleep(0.5)
+            time.sleep(0.1)
 
             # Stop receive thread
             self._stop_thread.set()
@@ -366,7 +366,7 @@ class BBD203Driver:
             except Exception as e:
                 if not self._stop_thread.is_set():
                     print(f"ERROR: Exception in receive loop: {e}")
-                time.sleep(0.5)
+                time.sleep(0.1)
 
     def _process_message(self, msg_id: int, msg: bytes):
         """
@@ -460,11 +460,11 @@ class BBD203Driver:
             if not self._send_command(cmd):
                 continue
 
-            time.sleep(0.5)  # Wait 500ms for controller to process (per documentation)
+            time.sleep(0.1)  # Wait for controller to process
 
             # Request status update to verify
             self.request_status_update(channel)
-            time.sleep(0.5)  # Wait for status response
+            time.sleep(0.1)  # Wait for status response
 
             # Check if state matches expected
             if self.channels[channel].enabled == enable:
@@ -473,7 +473,7 @@ class BBD203Driver:
             if attempt < retries - 1:
                 print(f"DEBUG: Enable verification failed for channel {channel}, "
                       f"retrying ({attempt + 1}/{retries})")
-                time.sleep(0.5)
+                time.sleep(0.1)
 
         print(f"ERROR: Failed to set and verify enable state for channel {channel} "
               f"after {retries} attempts")
@@ -550,7 +550,7 @@ class BBD203Driver:
                 if self.channels[channel].homed and not self.channels[channel].homing:
                     print(f"INFO: Channel {channel} homing completed")
                     return True
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             print(f"ERROR: Homing timeout for channel {channel}")
             return False
@@ -583,7 +583,7 @@ class BBD203Driver:
                 if all_homed:
                     print("INFO: All channels homed successfully")
                     return True
-                time.sleep(0.5)
+                time.sleep(0.1)
 
             print("ERROR: Timeout waiting for all channels to home")
             return False
@@ -629,7 +629,7 @@ class BBD203Driver:
                 if not self.channels[channel].moving:
                     print(f"INFO: Channel {channel} move completed")
                     return True
-                time.sleep(0.5)
+                time.sleep(0.01)
 
             print(f"ERROR: Move timeout for channel {channel}")
             return False
@@ -673,7 +673,7 @@ class BBD203Driver:
                 if not self.channels[channel].moving:
                     print(f"INFO: Channel {channel} move completed")
                     return True
-                time.sleep(0.5)
+                time.sleep(0.01)
 
             print(f"ERROR: Move timeout for channel {channel}")
             return False
@@ -732,11 +732,11 @@ class BBD203Driver:
 
         cmd = self.protocol.cmd_set_velocity_params(channel, max_vel_mm_s, accel_mm_s2)
         if self._send_command(cmd):
-            time.sleep(0.5)  # Wait 500ms for controller to process (per documentation)
+            time.sleep(0.1)  # Wait for controller to process
 
             # Request status update to confirm parameters were accepted
             self.request_status_update(channel)
-            time.sleep(0.5)  # Wait for status response
+            time.sleep(0.1)  # Wait for status response
             return True
         return False
 
